@@ -406,8 +406,8 @@ int main(int argc, char** argv)
 	const int CLIENT = 0;
 	const int SERVER = 1;
 	int mode = CLIENT;
-	char *ip = "10.0.1.112";
-	int port = NULL;
+	char *ip = IP;
+	int port = PORT;
 	int index;
 	int c;
 
@@ -426,7 +426,7 @@ int main(int argc, char** argv)
 			ip = optarg;
 			break;
 		case 'p':
-			port = optarg;
+			port = (int)optarg;
 			break;
 		case '?':
 			if (optopt == 'c')
@@ -450,10 +450,10 @@ int main(int argc, char** argv)
 	switch (mode)
 	{
 	case CLIENT:
-		start_client(*ip, NULL);
+		start_client(*ip, port);
 		break;
 	case SERVER:
-		start_server(*ip, NULL);
+		start_server(*ip, port);
 		break;
 	default:
 		abort();
