@@ -371,7 +371,7 @@ int start_client(char ip, char port)
         // assign IP, PORT 
         servaddr.sin_family = AF_INET;
 	if (ip)
-        	servaddr.sin_addr.s_addr = inet_addr(ip);
+        	servaddr.sin_addr.s_addr = inet_addr(&ip);
 	else
 		servaddr.sin_addr.s_addr = inet_addr(IP);
 	
@@ -450,10 +450,10 @@ int main(int argc, char** argv)
 	switch (mode)
 	{
 	case CLIENT:
-		start_client(ip, port);
+		start_client(*ip, *port);
 		break;
 	case SERVER:
-		start_server(ip, port);
+		start_server(*ip, *port);
 		break;
 	default:
 		abort();
