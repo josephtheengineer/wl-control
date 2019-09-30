@@ -20,44 +20,73 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#define MAX 80 
-#define PORT 8080 
-#define SA struct sockaddr 
+
+// multi-threading
+#include <stdio.h>				      
+#include <stdlib.h>	    
+#include <unistd.h>  //Header file for sleep(). man 3 sleep for details. 
+#include <pthread.h> 
+
+#define SA struct sockaddr
+
+#define BLACK   "\x1b[30m"
+#define RED     "\x1b[31m"
+#define GREEN   "\x1b[32m"
+#define YELLOW  "\x1b[33m"
+#define BLUE    "\x1b[34m"
+#define MAGENTA "\x1b[35m"
+#define CYAN    "\x1b[36m"
+#define WHITE   "\x1b[36m"
+#define RESET   "\x1b[0m"
+
+const int PORT = 8080;
+const int MAX_BUFF = 40;
+const int MAX_LINE = 40;
+
+char key_buff[MAX_BUFF][MAX_LINE];
+int key_len = -1;
+char mouse_buff[MAX_BUFF][MAX_LINE];
+int mouse_len = -1;
 
 int read_mouse()
 {
-    int fd, bytes;
-    unsigned char data[3];
+	int fd, bytes;
+	unsigned char data[3];
 
-    const char *pDevice = "/dev/input/mice";
+	const char *pDevice = "/dev/input/mice";
 
-    // Open Mouse
-    fd = open(pDevice, O_RDWR);
-    if(fd == -1)
-    {
-        printf("ERROR Opening %s\n", pDevice);
-        return -1;
-    }
+	// Open Mouse
+	fd = open(pDevice, O_RDWR);
+	if(fd == -1)
+	{
+		printf("ERROR Opening %s\n", pDevice);
+		return -1;
+	}
 
-    int left, middle, right;
-    signed char x, y;
-    while(1)
-    {
-        // Read Mouse     
-        bytes = read(fd, data, sizeof(data));
+	int left, middle, right;
+	signed char x, y;
 
-        if(bytes > 0)
-        {
-            left = data[0] & 0x1;
-            right = data[0] & 0x2;
-            middle = data[0] & 0x4;
+	while(1)
+	{
+		// Read Mouse	  
+		bytes = read(fd, data, sizeof(data));
 
-            x = data[1];
-            y = data[2];
-            printf("x=%d, y=%d, left=%d, middle=%d, right=%d\n", x, y, left, middle, right);
-        }   
-    }
-    return 0; 
+		if(bytes > 0)
+		{
+	    		left = data[0] & 0x1;
+	    		right = data[0] & 0x2;
+	    		middle = data[0] & 0x4;
+
+	    		x = data[1];
+			y = data[2];
+
+			char data[50];
+			sprintf(data, "x=%d, y=%d, left=%d, middle=%d, right=%d\n", x, y, left, middle, right);
+			//mouse_len++;
+			//mouse_buff[mouse_len] = data;
+		}
+    	}
+	return 0; 
 }
 
 static const char *const evval[3] = {
@@ -66,11 +95,11 @@ static const char *const evval[3] = {
 	"REPEATED"
 };
 
-int read_keyboard()
+int read_keyboard(void *dev)
 {
 	//const char *dev = "/dev/input/by-id/usb-04d9_USB_Keyboard-event-if01";
 	//const char *dev = "/dev/input/by-id/usb-04d9_USB_Keyboard-if01-event-kbd";
-	const char *dev = "/dev/input/by-path/pci-0000:00:14.0-usb-0:7:1.0-event-kbd";
+	//const char *dev = "/dev/input/by-path/pci-0000:00:14.0-usb-0:7:1.0-event-kbd";
 	struct input_event ev;
 	ssize_t n;
 	int fd;
@@ -94,38 +123,53 @@ int read_keyboard()
 		//}
 
 		if (ev.type == EV_KEY)// && ev.value >= 0 && ev.value <= 2)
-			printf("%s 0x%04x (%d)\n", evval[ev.value], (int)ev.code, (int)ev.code);
+		{
+			char data[50];
+			sprintf(data, "%s 0x%04x (%d)\n", evval[ev.value], (int)ev.code, (int)ev.code);
+			key_len++;
+			//key_buff[key_len] = data;
+			strcpy(key_buff[key_len], data);
+			printf(WHITE "Key event: " RESET "%s Len: %i\n", key_buff + key_len, key_len);
+		}
 	}
 
 	fflush(stdout);
 	fprintf(stderr, "%s.\n", strerror(errno));
 	return EXIT_FAILURE;
-}
+} 
 
 // Function designed for chat between client and server. 
 void server_func(int sockfd) 
-{ 
-	char buff[MAX]; 
-	int n; 
-	// infinite loop for chat 
-	for (;;) { 
-		bzero(buff, MAX); 
-
+{
+	char buff[MAX_BUFF * MAX_LINE];
+	while(1) 
+	{
 		// read the message from client and copy it in buffer 
 		read(sockfd, buff, sizeof(buff)); 
-		// print buffer which contains the client contents 
-		printf("From client: %s\t To client : ", buff); 
-		bzero(buff, MAX); 
-		n = 0; 
-		// copy server message in the buffer 
-		while ((buff[n++] = getchar()) != '\n') 
-			; 
+		
+		// print buffer
+		printf("From client: %s\t", buff);
+		if (buff == "get_key")
+		{
+			printf("Recieved get_key command!!");	
+		}
+		
+		printf("To client: \n");
+		sleep(2);
+		for (int i = 0; i < key_len; i++)
+                {
+                	printf("	%s", key_buff + i);
+                }
 
 		// and send that buffer to client 
-		write(sockfd, buff, sizeof(buff)); 
+		write(sockfd, key_buff, sizeof(buff));//key_len); 
+		
+		//Reset buffer
+		key_len = 0;
 
 		// if msg contains "Exit" then server exit and chat ended. 
-		if (strncmp("exit", buff, 4) == 0) { 
+		if (strncmp("exit", buff, 4) == 0) 
+		{ 
 			printf("Server Exit...\n"); 
 			break; 
 		} 
@@ -177,36 +221,51 @@ int start_server()
 		exit(0); 
 	} 
 	else
-		printf("server acccept the client...\n"); 
+		printf("server acccepted the client...\n"); 
+	
+	pthread_t key_thread;
+	printf("Starting keyboard capturing thread...\n");
+	pthread_create(&key_thread, NULL, read_keyboard, "/dev/input/by-path/pci-0000:00:14.0-usb-0:7:1.0-event-kbd"); 
+	//read_mouse;
 
 	// Function for chatting between client and server 
 	server_func(connfd); 
+
+	// Close threads
+	pthread_exit(key_thread);
 
 	// After chatting close the socket 
 	close(sockfd);
 	return 0;
 } 
- 
+
 void client_func(int sockfd) 
 { 
-	char buff[MAX]; 
-	int n; 
-	for (;;) { 
-		bzero(buff, sizeof(buff)); 
-		printf("Enter the string : "); 
-		n = 0; 
-		while ((buff[n++] = getchar()) != '\n') 
-			; 
-		write(sockfd, buff, sizeof(buff)); 
-		bzero(buff, sizeof(buff)); 
-		read(sockfd, buff, sizeof(buff)); 
-		printf("From Server : %s", buff); 
-		if ((strncmp(buff, "exit", 4)) == 0) { 
-			printf("Client Exit...\n"); 
-			break; 
-		} 
-	} 
-} 
+        char buff[MAX_BUFF * MAX_LINE];
+	int n = 0;
+        while(1)
+	{
+                printf("Enter the string : "); 
+                while ((buff[n++] = getchar()) != '\n') 
+                        ; 
+                write(sockfd, buff, sizeof(buff)); 
+                //bzero(buff, sizeof(buff));
+
+                read(sockfd, key_buff, sizeof(buff));
+		printf("Buffer size is %i bytes\n", sizeof(buff)); 
+                printf("From Server: \n");
+		for (int i = 0; i<MAX_BUFF; i++)
+		{
+			printf("	%s", key_buff + i);
+		}
+
+                if ((strncmp(buff, "exit", 4)) == 0) 
+		{ 
+                        printf("Client Exit...\n"); 
+                        break; 
+                } 
+        } 
+}
 
 int start_client() 
 { 
@@ -242,7 +301,7 @@ int start_client()
 	// close the socket 
 	close(sockfd);
 	return 0;
-} 
+}
 
 int main(int argc, char** argv)
 {
