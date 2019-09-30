@@ -8,6 +8,10 @@
 #include <sys/stat.h>
 #include <linux/uinput.h>
 #include <pthread.h> 
+#include <ctype.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <netdb.h>
 #include <netinet/in.h>
@@ -82,7 +86,7 @@ static const char *const evval[3] = {
 	"REPEATED"
 };
 
-int read_keyboard(void *dev)
+void *read_keyboard(void *dev)
 {
 	//const char *dev = "/dev/input/by-id/usb-04d9_USB_Keyboard-event-if01";
 	//const char *dev = "/dev/input/by-id/usb-04d9_USB_Keyboard-if01-event-kbd";
@@ -94,7 +98,7 @@ int read_keyboard(void *dev)
 	
 	if (fd == -1) {
 		fprintf(stderr, "Cannot open %s: %s.\n", dev, strerror(errno));
-		return EXIT_FAILURE;
+		pthread_exit(NULL);
 	}
 
 	while (1) {
@@ -122,7 +126,7 @@ int read_keyboard(void *dev)
 
 	fflush(stdout);
 	fprintf(stderr, "%s.\n", strerror(errno));
-	return EXIT_FAILURE;
+	pthread_exit(NULL);
 } 
 
 // Function designed for chat between client and server. 
@@ -166,7 +170,8 @@ void server_func(int sockfd)
 // Driver function 
 int start_server() 
 { 
-	int sockfd, connfd, len; 
+	int sockfd, connfd; 
+	unsigned int len; 
 	struct sockaddr_in servaddr, cli; 
 
 	// socket create and verification 
@@ -219,19 +224,84 @@ int start_server()
 	server_func(connfd); 
 
 	// Close threads
-	pthread_exit(key_thread);
+	pthread_join(key_thread, NULL);
 
 	// After chatting close the socket 
 	close(sockfd);
 	return 0;
-} 
+}
 
-void client_func(int sockfd) 
+void emit(int fd, int type, int code, int val)
+{
+	struct input_event ie;
+
+	ie.type = type;
+	ie.code = code;
+	ie.value = val;
+	/* timestamp values below are ignored */
+	ie.time.tv_sec = 0;
+	ie.time.tv_usec = 0;
+
+	int res = write(fd, &ie, sizeof(ie));
+	//printf("emit write bytes=%d fd=%d code=%d val=%d\n",res, fd, code, val);
+}
+
+int create_keyboard(int *key_fd)
+{
+	struct uinput_user_dev uud;
+	int version, rc, fd;
+
+	fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+	printf("fd=%d\n",fd);
+
+	rc = ioctl(fd, UI_GET_VERSION, &version);
+	printf("rd=%d\n",rc); 
+
+	if (rc == 0 && version >= 5) 
+	{
+		printf("Error! version=%d\n",version);
+		//return 0;
+	}
+
+	/*
+	* The ioctls below will enable the device that is about to be
+	* created, to pass key events, in this case the space key.
+	*/
+	int i1 = ioctl(fd, UI_SET_EVBIT, EV_KEY);
+	int i2 = ioctl(fd, UI_SET_EVBIT, EV_SYN);
+	int i3 = ioctl(fd, UI_SET_KEYBIT, KEY_D);
+	int i4 = ioctl(fd, UI_SET_KEYBIT, KEY_U);
+	int i5 = ioctl(fd, UI_SET_KEYBIT, KEY_P);
+	int i6 = ioctl(fd, UI_SET_KEYBIT, KEY_A);
+
+	//printf("ioctl = %d, %d, %d ,%d , %d, %d\n", i1,i2,i3,i4,i5,i6);
+
+	memset(&uud, 0, sizeof(uud));
+	snprintf(uud.name, UINPUT_MAX_NAME_SIZE, "uinput-keyboard");
+	uud.id.bustype = BUS_HOST;
+	uud.id.vendor  = 0x1;
+	uud.id.product = 0x2;
+	uud.id.version = 1;
+
+	write(fd, &uud, sizeof(uud));
+	sleep(2);
+
+	int i = ioctl(fd, UI_DEV_CREATE);
+	printf("dev create =%d\n", i);
+	sleep(2);
+
+	*key_fd = fd;
+	//printf("key_fd: %i\n", *key_fd);
+	//printf("fd: %i\n", fd);
+	return 0;
+}
+
+void client_func(int sockfd, int key_fd) 
 { 
         char buff[MAX_BUFF * MAX_LINE];
-	int n = 0;
+        int n = 0;
         while(1)
-	{
+        {
                 printf("Enter the string : "); 
                 while ((buff[n++] = getchar()) != '\n') 
                         ; 
@@ -239,15 +309,19 @@ void client_func(int sockfd)
                 //bzero(buff, sizeof(buff));
 
                 read(sockfd, key_buff, sizeof(buff));
-		printf("Buffer size is %i bytes\n", sizeof(buff)); 
+                printf("Buffer size is %lu bytes\n", sizeof(buff)); 
                 printf(WHITE "From Server: " RESET "\n");
-		for (int i = 0; i<MAX_BUFF; i++)
-		{
-			printf("	%s", *(key_buff + i));
-		}
+                for (int i = 0; i<MAX_BUFF; i++)
+                {
+                        printf("        %s", *(key_buff + i));
+                	emit(fd, EV_KEY, KEY_U, 1);
+			emit(fd, EV_SYN, SYN_REPORT, 0);
+			//emit(fd, EV_KEY, KEY_U, 0);
+			//emit(fd, EV_SYN, SYN_REPORT, 0);
+		}		
 
                 if ((strncmp(buff, "exit", 4)) == 0) 
-		{ 
+                { 
                         printf("Client Exit...\n"); 
                         break; 
                 } 
@@ -256,131 +330,43 @@ void client_func(int sockfd)
 
 int start_client() 
 { 
-	int sockfd, connfd; 
-	struct sockaddr_in servaddr, cli; 
+        int sockfd, connfd; 
+        struct sockaddr_in servaddr, cli; 
+   
+        // socket create and varification 
+        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        if (sockfd == -1) {     
+                printf("socket creation failed...\n");
+                exit(0); 
+        } 
+        else
+                printf("Socket successfully created..\n");
+        bzero(&servaddr, sizeof(servaddr));
 
-	// socket create and varification 
-	sockfd = socket(AF_INET, SOCK_STREAM, 0); 
-	if (sockfd == -1) { 
-		printf("socket creation failed...\n"); 
-		exit(0); 
-	} 
-	else
-		printf("Socket successfully created..\n"); 
-	bzero(&servaddr, sizeof(servaddr)); 
+        // assign IP, PORT 
+        servaddr.sin_family = AF_INET;
+        servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        servaddr.sin_port = htons(PORT);    
+   
+        // connect the client socket to server socket 
+        if (connect(sockfd, (SA*)&servaddr, sizeof(servaddr)) != 0) {
+                printf("connection with the server failed...\n");
+                exit(0);
+        } 
+        else
+                printf("connected to the server..\n"); 
 
-	// assign IP, PORT 
-	servaddr.sin_family = AF_INET; 
-	servaddr.sin_addr.s_addr = inet_addr("127.0.0.1"); 
-	servaddr.sin_port = htons(PORT); 
+        printf("Creating virtual keyboard...\n");
+        int key_fd;
+        create_keyboard(&key_fd);	
 
-	// connect the client socket to server socket 
-	if (connect(sockfd, (SA*)&servaddr, sizeof(servaddr)) != 0) { 
-		printf("connection with the server failed...\n"); 
-		exit(0); 
-	} 
-	else
-		printf("connected to the server..\n"); 
-
-	printf("Creating virtual keyboard...\n");
-        create_keyboard(); 
-
-	client_func(sockfd); 
+        client_func(sockfd, key_fd); 
+        
+	ioctl(fd, UI_DEV_DESTROY);                                                           
+        close(fd);
 
 	close(sockfd);
-	return 0;
-}
-
-void emit(int fd, int type, int code, int val)
-{
-   struct input_event ie;
-
-   ie.type = type;
-   ie.code = code;
-   ie.value = val;
-   /* timestamp values below are ignored */
-   ie.time.tv_sec = 0;
-   ie.time.tv_usec = 0;
-
-   int res = write(fd, &ie, sizeof(ie));
-   printf("emit write bytes=%d fd=%d code=%d val=%d\n",res, fd, code, val);
-}
-
-int create_keyboard(void)
-{
-   struct uinput_user_dev uud;
-   int version, rc, fd;
-
-   fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
-   printf("fd=%d\n",fd);
-
-   rc = ioctl(fd, UI_GET_VERSION, &version);
-   printf("rd=%d\n",rc); 
-
-   if (rc == 0 && version >= 5) 
-   {
-    printf("Error! version=%d\n",version);
-      //return 0;
-   }
-
-   /*
-    * The ioctls below will enable the device that is about to be
-    * created, to pass key events, in this case the space key.
-    */
-   int i1 = ioctl(fd, UI_SET_EVBIT, EV_KEY);
-   int i2 = ioctl(fd, UI_SET_EVBIT, EV_SYN);
-   int i3 = ioctl(fd, UI_SET_KEYBIT, KEY_D);
-   int i4 = ioctl(fd, UI_SET_KEYBIT, KEY_U);
-   int i5 = ioctl(fd, UI_SET_KEYBIT, KEY_P);
-   int i6 = ioctl(fd, UI_SET_KEYBIT, KEY_A);
-
-//  printf("ioctl = %d, %d, %d ,%d , %d, %d\n", i1,i2,i3,i4,i5,i6);
-
-   memset(&uud, 0, sizeof(uud));
-   snprintf(uud.name, UINPUT_MAX_NAME_SIZE, "uinput-keyboard");
-   uud.id.bustype = BUS_HOST;
-   uud.id.vendor  = 0x1;
-   uud.id.product = 0x2;
-   uud.id.version = 1;
-
-   write(fd, &uud, sizeof(uud));
-   sleep(2);
-
-   int i = ioctl(fd, UI_DEV_CREATE);
-   printf("dev create =%d\n", i);
-
-   sleep(2);
-
-   /* Key press, report the event, send key release, and report again */
-for(;;)
-{
-   emit(fd, EV_KEY, KEY_D, 1);
-   emit(fd, EV_SYN, SYN_REPORT, 1);
-   sleep(1);
-   emit(fd, EV_KEY, KEY_D, 0);
-   emit(fd, EV_SYN, SYN_REPORT, 0);
-
-   emit(fd, EV_KEY, KEY_U, 1);
-   emit(fd, EV_SYN, SYN_REPORT, 0);
-   emit(fd, EV_KEY, KEY_U, 0);
-   emit(fd, EV_SYN, SYN_REPORT, 0);
-
-   emit(fd, EV_KEY, KEY_P, 1);
-   emit(fd, EV_SYN, SYN_REPORT, 0);
-   emit(fd, EV_KEY, KEY_P, 0);
-   emit(fd, EV_SYN, SYN_REPORT, 0);
-
-   emit(fd, EV_KEY, KEY_A, 1);
-   emit(fd, EV_SYN, SYN_REPORT, 0);
-   emit(fd, EV_KEY, KEY_A, 0);
-   emit(fd, EV_SYN, SYN_REPORT, 0);
-
-   sleep(5);
-}
-   ioctl(fd, UI_DEV_DESTROY);
-
-   close(fd);
-   return 0;
+        return 0;
 }
 
 int main(int argc, char** argv)
