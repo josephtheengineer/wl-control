@@ -31,10 +31,10 @@
 #define RESET   "\x1b[0m"
 
 const int PORT = 8080;
-const int MAX_BUFF = 40;
+const size_t MAX_BUFF = 40;
 const int MAX_LINE = 40;
 
-char key_buff[MAX_BUFF][MAX_LINE];
+struct input_event key_buff[MAX_BUFF];
 int key_len = -1;
 char mouse_buff[MAX_BUFF][MAX_LINE];
 int mouse_len = -1;
@@ -115,12 +115,12 @@ void *read_keyboard(void *dev)
 
 		if (ev.type == EV_KEY)// && ev.value >= 0 && ev.value <= 2)
 		{
-			char data[50];
-			sprintf(data, "%s 0x%04x (%d)\n", evval[ev.value], (int)ev.code, (int)ev.code);
+			//char data[50];
+			printf("%s 0x%04x (%d)\n", evval[ev.value], (int)ev.code, (int)ev.code);
 			key_len++;
-			//key_buff[key_len] = data;
-			strcpy(key_buff[key_len], data);
-			printf(WHITE "Key event: " RESET "%s Len: %i\n", *(key_buff + key_len), key_len);
+			key_buff[key_len] = ev;
+			//strcpy(key_buff[key_len], data);
+			//printf(WHITE "Key event: " RESET "%s Len: %i\n", *(key_buff + key_len), key_len);
 		}
 	}
 
@@ -149,7 +149,7 @@ void server_func(int sockfd)
 		sleep(2);
 		for (int i = 0; i < key_len; i++)
                 {
-                	printf("	%s", *(key_buff + i));
+			printf("	%s 0x%04x (%d)\n", evval[key_buff[i].value], (int)key_buff[i].code, (int)key_buff[i].code);
                 }
 
 		// and send that buffer to client 
@@ -243,7 +243,7 @@ void emit(int fd, int type, int code, int val)
 	ie.time.tv_usec = 0;
 
 	int res = write(fd, &ie, sizeof(ie));
-	//printf("emit write bytes=%d fd=%d code=%d val=%d\n",res, fd, code, val);
+	printf("emit write bytes=%d fd=%d code=%d val=%d\n",res, fd, code, val);
 }
 
 int create_keyboard(int *key_fd)
@@ -265,14 +265,15 @@ int create_keyboard(int *key_fd)
 
 	/*
 	* The ioctls below will enable the device that is about to be
-	* created, to pass key events, in this case the space key.
+	* created, to pass key events.
 	*/
-	int i1 = ioctl(fd, UI_SET_EVBIT, EV_KEY);
-	int i2 = ioctl(fd, UI_SET_EVBIT, EV_SYN);
-	int i3 = ioctl(fd, UI_SET_KEYBIT, KEY_D);
-	int i4 = ioctl(fd, UI_SET_KEYBIT, KEY_U);
-	int i5 = ioctl(fd, UI_SET_KEYBIT, KEY_P);
-	int i6 = ioctl(fd, UI_SET_KEYBIT, KEY_A);
+	ioctl(fd, UI_SET_EVBIT, EV_KEY); 
+        ioctl(fd, UI_SET_EVBIT, EV_SYN);
+
+	for(int i = 0; i < 632; i++)
+	{
+		ioctl(fd, UI_SET_KEYBIT, i);
+	}
 
 	//printf("ioctl = %d, %d, %d ,%d , %d, %d\n", i1,i2,i3,i4,i5,i6);
 
@@ -300,6 +301,13 @@ void client_func(int sockfd, int key_fd)
 { 
         char buff[MAX_BUFF * MAX_LINE];
         int n = 0;
+
+	//emit(key_fd, EV_KEY, KEY_U, 1);
+        //emit(key_fd, EV_SYN, SYN_REPORT, 0);
+        //sleep(1);
+        //emit(key_fd, EV_KEY, KEY_U, 0);
+        //emit(key_fd, EV_SYN, SYN_REPORT, 0);
+
         while(1)
         {
                 printf("Enter the string : "); 
@@ -313,9 +321,19 @@ void client_func(int sockfd, int key_fd)
                 printf(WHITE "From Server: " RESET "\n");
                 for (int i = 0; i<MAX_BUFF; i++)
                 {
-                        printf("        %s", *(key_buff + i));
-                	emit(fd, EV_KEY, KEY_U, 1);
-			emit(fd, EV_SYN, SYN_REPORT, 0);
+			if (!key_buff[i].code)
+				break;
+
+                        printf("        %s 0x%04x (%d)\n", evval[key_buff[i].value], (int)key_buff[i].code, (int)key_buff[i].code);
+                	emit(key_fd, EV_KEY, key_buff[i].code, key_buff[i].value);
+			emit(key_fd, EV_SYN, SYN_REPORT, 0);
+			
+			//emit(key_fd, EV_KEY, KEY_U, 1);
+        		//emit(key_fd, EV_SYN, SYN_REPORT, 0);
+        		//sleep(1);
+        		//emit(key_fd, EV_KEY, KEY_U, 0);
+        		//emit(key_fd, EV_SYN, SYN_REPORT, 0);
+
 			//emit(fd, EV_KEY, KEY_U, 0);
 			//emit(fd, EV_SYN, SYN_REPORT, 0);
 		}		
@@ -359,11 +377,11 @@ int start_client()
         printf("Creating virtual keyboard...\n");
         int key_fd;
         create_keyboard(&key_fd);	
-
-        client_func(sockfd, key_fd); 
+	
+	client_func(sockfd, key_fd); 
         
-	ioctl(fd, UI_DEV_DESTROY);                                                           
-        close(fd);
+	ioctl(key_fd, UI_DEV_DESTROY);                                                           
+        close(key_fd);
 
 	close(sockfd);
         return 0;
