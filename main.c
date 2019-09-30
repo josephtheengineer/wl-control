@@ -30,6 +30,7 @@
 #define WHITE   "\x1b[36m"
 #define RESET   "\x1b[0m"
 
+const char *IP = "127.0.0.1";
 const int PORT = 8080;
 const size_t MAX_BUFF = 40;
 const int MAX_LINE = 40;
@@ -168,7 +169,7 @@ void server_func(int sockfd)
 } 
 
 // Driver function 
-int start_server() 
+int start_server(char ip, char port) 
 { 
 	int sockfd, connfd; 
 	unsigned int len; 
@@ -185,9 +186,15 @@ int start_server()
 	bzero(&servaddr, sizeof(servaddr)); 
 
 	// assign IP, PORT 
-	servaddr.sin_family = AF_INET; 
-	servaddr.sin_addr.s_addr = htonl(INADDR_ANY); 
-	servaddr.sin_port = htons(PORT); 
+	servaddr.sin_family = AF_INET;
+	if (ip)
+		servaddr.sin_addr.s_addr = htonl(ip); 
+	else
+		servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	if (port)
+		servaddr.sin_port = htons(port);
+	else
+		servaddr.sin_port = htons(PORT);
 
 	// Binding newly created socket to given IP and verification 
 	if ((bind(sockfd, (SA*)&servaddr, sizeof(servaddr))) != 0) { 
@@ -346,7 +353,7 @@ void client_func(int sockfd, int key_fd)
         } 
 }
 
-int start_client() 
+int start_client(char ip, char port) 
 { 
         int sockfd, connfd; 
         struct sockaddr_in servaddr, cli; 
@@ -363,8 +370,15 @@ int start_client()
 
         // assign IP, PORT 
         servaddr.sin_family = AF_INET;
-        servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-        servaddr.sin_port = htons(PORT);    
+	if (ip)
+        	servaddr.sin_addr.s_addr = inet_addr(ip);
+	else
+		servaddr.sin_addr.s_addr = inet_addr(IP);
+	
+	if (port)
+		servaddr.sin_port = htons(port);
+	else
+		servaddr.sin_port = htons(PORT);
    
         // connect the client socket to server socket 
         if (connect(sockfd, (SA*)&servaddr, sizeof(servaddr)) != 0) {
@@ -392,13 +406,14 @@ int main(int argc, char** argv)
 	const int CLIENT = 0;
 	const int SERVER = 1;
 	int mode = CLIENT;
-	char *cvalue = NULL;
+	char *ip = NULL;
+	char *port = NULL;
 	int index;
 	int c;
 
 	opterr = 0;
 
-	while ((c = getopt (argc, argv, "cs")) != -1)
+	while ((c = getopt (argc, argv, "csi:p:")) != -1)
 		switch (c)
 		{
 		case 'c':
@@ -407,9 +422,12 @@ int main(int argc, char** argv)
 		case 's':
 			mode = SERVER;
 			break;
-		//case 'c':
-		//	cvalue = optarg;
-		//	break;
+		case 'i':
+			ip = optarg;
+			break;
+		case 'p':
+			port = optarg;
+			break;
 		case '?':
 			if (optopt == 'c')
 				fprintf (stderr, "Option -%c requires an argument.\n", optopt);
@@ -432,10 +450,10 @@ int main(int argc, char** argv)
 	switch (mode)
 	{
 	case CLIENT:
-		start_client();
+		start_client(ip, port);
 		break;
 	case SERVER:
-		start_server();
+		start_server(ip, port);
 		break;
 	default:
 		abort();
