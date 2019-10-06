@@ -375,10 +375,10 @@ int start_client(char ip, char port)
 	else
 		servaddr.sin_addr.s_addr = inet_addr(IP);
 	
-	if (port)
-		servaddr.sin_port = htons(port);
-	else
-		servaddr.sin_port = htons(PORT);
+	//if (port)
+	//	servaddr.sin_port = htons(port);
+	//else
+	servaddr.sin_port = htons(8080);
    
         // connect the client socket to server socket 
         if (connect(sockfd, (SA*)&servaddr, sizeof(servaddr)) != 0) {
