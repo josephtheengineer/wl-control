@@ -30,8 +30,9 @@
 #define WHITE   "\x1b[36m"
 #define RESET   "\x1b[0m"
 
-const char *IP = "127.0.0.1";
-const int PORT = 8080;
+char IP[10] = "127.0.0.1";
+#define PORT 8080
+
 const size_t MAX_BUFF = 40;
 const int MAX_LINE = 40;
 
@@ -117,7 +118,7 @@ void *read_keyboard(void *dev)
 		if (ev.type == EV_KEY)// && ev.value >= 0 && ev.value <= 2)
 		{
 			//char data[50];
-			printf("%s 0x%04x (%d)\n", evval[ev.value], (int)ev.code, (int)ev.code);
+			printf("%s 0x%04x (%d) - Len%i\n", evval[ev.value], (int)ev.code, (int)ev.code, key_len);
 			key_len++;
 			key_buff[key_len] = ev;
 			//strcpy(key_buff[key_len], data);
@@ -141,7 +142,7 @@ void server_func(int sockfd)
 		
 		// print buffer
 		printf(WHITE "From client: " RESET "%s\t", buff);
-		if (strcmp(buff, "get_key\n") == 0)
+		if (strcmp(buff, "get_key") == 0)
 		{
 			printf("Recieved get_key command!!");	
 		}
@@ -169,8 +170,9 @@ void server_func(int sockfd)
 } 
 
 // Driver function 
-int start_server(char ip, char port) 
-{ 
+int start_server(char *ip, int port)
+{
+	printf("Listening to %s on %i...\n", ip, port);
 	int sockfd, connfd; 
 	unsigned int len; 
 	struct sockaddr_in servaddr, cli; 
@@ -187,14 +189,8 @@ int start_server(char ip, char port)
 
 	// assign IP, PORT 
 	servaddr.sin_family = AF_INET;
-	//if (ip)
-	//	servaddr.sin_addr.s_addr = htonl(IP); 
-	//else
-	//servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	//if (port)
-	//	servaddr.sin_port = htons(port);
-	//else
-	servaddr.sin_port = htons(8080);
+	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	servaddr.sin_port = htons(port);
 
 	// Binding newly created socket to given IP and verification 
 	if ((bind(sockfd, (SA*)&servaddr, sizeof(servaddr))) != 0) { 
@@ -306,29 +302,28 @@ int create_keyboard(int *key_fd)
 
 void client_func(int sockfd, int key_fd) 
 { 
-        char buff[MAX_BUFF * MAX_LINE];
-        int n = 0;
+	//char buff[MAX_BUFF * MAX_LINE];
+        char *buff;
+	//int n = 0;
 
-	//emit(key_fd, EV_KEY, KEY_U, 1);
-        //emit(key_fd, EV_SYN, SYN_REPORT, 0);
-        //sleep(1);
-        //emit(key_fd, EV_KEY, KEY_U, 0);
-        //emit(key_fd, EV_SYN, SYN_REPORT, 0);
-
-        while(1)
+	while(1)
         {
-                printf("Enter the string : "); 
-                while ((buff[n++] = getchar()) != '\n') 
-                        ; 
-                write(sockfd, buff, sizeof(buff)); 
+		sleep(10);
+		//printf("Enter the string : ");
+		//n=0;
+                //while ((buff[n++] = getchar()) != '\n');
+		printf("Sending '%s' to server...\n", "get_key");
+		buff = "get_key";
+		write(sockfd, buff, sizeof(buff)); 
                 //bzero(buff, sizeof(buff));
 
-                read(sockfd, key_buff, sizeof(buff));
+                read(sockfd, key_buff, sizeof(key_buff));
                 printf("Buffer size is %lu bytes\n", sizeof(buff)); 
                 printf(WHITE "From Server: " RESET "\n");
                 for (int i = 0; i<MAX_BUFF; i++)
                 {
 			if (!key_buff[i].code)
+				//printf("Blank code!\n");
 				break;
 
                         printf("        %s 0x%04x (%d)\n", evval[key_buff[i].value], (int)key_buff[i].code, (int)key_buff[i].code);
@@ -343,7 +338,9 @@ void client_func(int sockfd, int key_fd)
 
 			//emit(fd, EV_KEY, KEY_U, 0);
 			//emit(fd, EV_SYN, SYN_REPORT, 0);
-		}		
+		}
+
+		//bzero(buff, sizeof(buff));
 
                 if ((strncmp(buff, "exit", 4)) == 0) 
                 { 
@@ -353,8 +350,9 @@ void client_func(int sockfd, int key_fd)
         } 
 }
 
-int start_client(char ip, char port) 
-{ 
+int start_client(char *ip, int port) 
+{
+	printf("Client searching for server at %s on %i...\n", ip, port);
         int sockfd, connfd; 
         struct sockaddr_in servaddr, cli; 
    
@@ -370,15 +368,8 @@ int start_client(char ip, char port)
 
         // assign IP, PORT 
         servaddr.sin_family = AF_INET;
-	if (ip)
-        	servaddr.sin_addr.s_addr = inet_addr("10.0.0.112");
-	else
-		servaddr.sin_addr.s_addr = inet_addr(IP);
-	
-	//if (port)
-	//	servaddr.sin_port = htons(port);
-	//else
-	servaddr.sin_port = htons(8080);
+       	servaddr.sin_addr.s_addr = inet_addr(ip);
+	servaddr.sin_port = htons(port);
    
         // connect the client socket to server socket 
         if (connect(sockfd, (SA*)&servaddr, sizeof(servaddr)) != 0) {
@@ -406,7 +397,8 @@ int main(int argc, char** argv)
 	const int CLIENT = 0;
 	const int SERVER = 1;
 	int mode = CLIENT;
-	char *ip = "127.0.0.1"; //(char *)IP;
+	char *server_ip = IP;
+	char *client_ip = NULL;
 	int port = PORT;
 	int index;
 	int c;
@@ -423,7 +415,13 @@ int main(int argc, char** argv)
 			mode = SERVER;
 			break;
 		case 'i':
-			ip = optarg;
+			switch (mode)
+			{
+			case CLIENT:
+				server_ip = optarg;
+			case SERVER:
+				client_ip = optarg;
+			}
 			break;
 		case 'p':
 			port = (int)optarg;
@@ -450,10 +448,12 @@ int main(int argc, char** argv)
 	switch (mode)
 	{
 	case CLIENT:
-		start_client(*ip, port);
+		printf("Client searching for server at %s on %i...\n", server_ip, port);
+		start_client(server_ip, port);
 		break;
 	case SERVER:
-		start_server(*ip, port);
+		printf("Listening to %s on %i...\n", client_ip, port);
+		start_server(client_ip, port);
 		break;
 	default:
 		abort();
