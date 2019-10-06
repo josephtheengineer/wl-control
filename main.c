@@ -190,11 +190,11 @@ int start_server(char ip, char port)
 	//if (ip)
 	//	servaddr.sin_addr.s_addr = htonl(IP); 
 	//else
-	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	if (port)
-		servaddr.sin_port = htons(port);
-	else
-		servaddr.sin_port = htons(PORT);
+	//servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	//if (port)
+	//	servaddr.sin_port = htons(port);
+	//else
+	servaddr.sin_port = htons(8080);
 
 	// Binding newly created socket to given IP and verification 
 	if ((bind(sockfd, (SA*)&servaddr, sizeof(servaddr))) != 0) { 
