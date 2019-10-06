@@ -371,7 +371,7 @@ int start_client(char ip, char port)
         // assign IP, PORT 
         servaddr.sin_family = AF_INET;
 	if (ip)
-        	servaddr.sin_addr.s_addr = inet_addr(&ip);
+        	servaddr.sin_addr.s_addr = inet_addr("10.0.0.112");
 	else
 		servaddr.sin_addr.s_addr = inet_addr(IP);
 	
