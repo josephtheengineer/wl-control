@@ -187,10 +187,10 @@ int start_server(char ip, char port)
 
 	// assign IP, PORT 
 	servaddr.sin_family = AF_INET;
-	if (ip)
-		servaddr.sin_addr.s_addr = htonl(ip); 
-	else
-		servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	//if (ip)
+	//	servaddr.sin_addr.s_addr = htonl(IP); 
+	//else
+	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	if (port)
 		servaddr.sin_port = htons(port);
 	else
@@ -406,7 +406,7 @@ int main(int argc, char** argv)
 	const int CLIENT = 0;
 	const int SERVER = 1;
 	int mode = CLIENT;
-	char *ip = IP;
+	char *ip = "127.0.0.1"; //(char *)IP;
 	int port = PORT;
 	int index;
 	int c;
