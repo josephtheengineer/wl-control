@@ -41,6 +41,16 @@ int key_len = -1;
 char mouse_buff[MAX_BUFF][MAX_LINE];
 int mouse_len = -1;
 
+enum level {
+	ERROR,
+	WARN,
+	INFO,
+	DEBUG,
+	TRACE
+};
+
+int log(char *message, int level)
+
 int read_mouse()
 {
 	int fd, bytes;
@@ -50,8 +60,7 @@ int read_mouse()
 
 	// Open Mouse
 	fd = open(pDevice, O_RDWR);
-	if(fd == -1)
-	{
+	if(fd == -1) {
 		printf("ERROR Opening %s\n", pDevice);
 		return -1;
 	}
@@ -59,13 +68,11 @@ int read_mouse()
 	int left, middle, right;
 	signed char x, y;
 
-	while(1)
-	{
+	while(1) {
 		// Read Mouse
 		bytes = read(fd, data, sizeof(data));
 
-		if(bytes > 0)
-		{
+		if(bytes > 0) {
 			left = data[0] & 0x1;
 			right = data[0] & 0x2;
 			middle = data[0] & 0x4;
@@ -115,8 +122,7 @@ void *read_keyboard(void *dev)
 		//	break;
 		//}
 
-		if (ev.type == EV_KEY)// && ev.value >= 0 && ev.value <= 2)
-		{
+		if (ev.type == EV_KEY)// && ev.value >= 0 && ev.value <= 2) {
 			//char data[50];
 			printf("%s 0x%04x (%d) - Len%i\n", evval[ev.value], (int)ev.code, (int)ev.code, key_len);
 			key_len++;
@@ -135,22 +141,19 @@ void *read_keyboard(void *dev)
 void server_func(int sockfd)
 {
 	char buff[MAX_BUFF * MAX_LINE];
-	while(1)
-	{
+	while(1) {
 		// read the message from client and copy it in buffer
 		read(sockfd, buff, sizeof(buff));
 
 		// print buffer
 		printf(WHITE "From client: " RESET "%s\t", buff);
-		if (strcmp(buff, "get_key") == 0)
-		{
+		if (strcmp(buff, "get_key") == 0) {
 			printf("Recieved get_key command!!");
 		}
 
 		printf("To client: \n");
 		sleep(2);
-		for (int i = 0; i < key_len; i++)
-		{
+		for (int i = 0; i < key_len; i++) {
 			printf("	%s 0x%04x (%d)\n", evval[key_buff[i].value], (int)key_buff[i].code, (int)key_buff[i].code);
 		}
 
@@ -161,8 +164,7 @@ void server_func(int sockfd)
 		key_len = 0;
 
 		// if msg contains "Exit" then server exit and chat ended.
-		if (strncmp("exit", buff, 4) == 0)
-		{
+		if (strncmp("exit", buff, 4) == 0) {
 			printf("Server Exit...\n");
 			break;
 		}
@@ -260,8 +262,7 @@ int create_keyboard(int *key_fd)
 	rc = ioctl(fd, UI_GET_VERSION, &version);
 	printf("rd=%d\n",rc);
 
-	if (rc == 0 && version >= 5)
-	{
+	if (rc == 0 && version >= 5) {
 		printf("Error! version=%d\n",version);
 		//return 0;
 	}
@@ -273,8 +274,7 @@ int create_keyboard(int *key_fd)
 	ioctl(fd, UI_SET_EVBIT, EV_KEY);
 	ioctl(fd, UI_SET_EVBIT, EV_SYN);
 
-	for(int i = 0; i < 632; i++)
-	{
+	for(int i = 0; i < 632; i++) {
 		ioctl(fd, UI_SET_KEYBIT, i);
 	}
 
@@ -306,8 +306,7 @@ void client_func(int sockfd, int key_fd)
 	char *buff;
 	//int n = 0;
 
-	while(1)
-	{
+	while(1) {
 		sleep(10);
 		//printf("Enter the string : ");
 		//n=0;
@@ -320,11 +319,11 @@ void client_func(int sockfd, int key_fd)
 		read(sockfd, key_buff, sizeof(key_buff));
 		printf("Buffer size is %lu bytes\n", sizeof(buff));
 		printf(WHITE "From Server: " RESET "\n");
-		for (int i = 0; i<MAX_BUFF; i++)
-		{
-			if (!key_buff[i].code)
+		for (int i = 0; i<MAX_BUFF; i++) {
+			if (!key_buff[i].code) {
 				//printf("Blank code!\n");
 				break;
+			}
 
 			printf("        %s 0x%04x (%d)\n", evval[key_buff[i].value], (int)key_buff[i].code, (int)key_buff[i].code);
 			emit(key_fd, EV_KEY, key_buff[i].code, key_buff[i].value);
@@ -342,8 +341,7 @@ void client_func(int sockfd, int key_fd)
 
 		//bzero(buff, sizeof(buff));
 
-		if ((strncmp(buff, "exit", 4)) == 0)
-		{
+		if ((strncmp(buff, "exit", 4)) == 0) {
 			printf("Client Exit...\n");
 			break;
 		}
@@ -441,43 +439,35 @@ int main(int argc, char** argv)
 
 	opterr = 0;
 
-	if (strcmp(argv[1], "client") == 0)
-	{
+	if (strcmp(argv[1], "client") == 0) {
 		mode = CLIENT;
 	}
-	else if (strcmp(argv[1], "server") == 0)
-	{
+	else if (strcmp(argv[1], "server") == 0) {
 		mode = SERVER;
 	}
-	else if (strcmp(argv[1], "version") == 0)
-	{
+	else if (strcmp(argv[1], "version") == 0) {
 		version();
 		return 0;
 	}
-	else if (strcmp(argv[1], "help") == 0)
-	{
+	else if (strcmp(argv[1], "help") == 0) {
 		help();
 		return 0;
 	}
-	else
-	{
+	else {
 		printf(RED "Invalid command %s." RESET "\n", argv[1]);
 		abort();
 	}
 
 	// remove sub command to prepare for getopt
-	for(int i = 0; i < argc-1; i++)
-	{
+	for(int i = 0; i < argc-1; i++) {
 		argv[i]=argv[i+1];
 	}
 	argc--;
 
 	while ((c = getopt (argc, argv, "i:p:v")) != -1)
-		switch (c)
-		{
+		switch (c) {
 			case 'i': // ip
-				switch (mode)
-				{
+				switch (mode) {
 					case CLIENT:
 						server_ip = optarg;
 					case SERVER:
@@ -491,14 +481,15 @@ int main(int argc, char** argv)
 				printf("Visual mode is not implemented yet!\n");
 				break;
 			case '?':
-				if (optopt == 'i' || optopt == 'p')
+				if (optopt == 'i' || optopt == 'p') {
 					fprintf (stderr, "Option -%c requires an argument.\n", optopt);
-				else if (isprint (optopt))
+				} else if (isprint (optopt)) {
 					fprintf (stderr, "Unknown option `-%c'.\n", optopt);
-				else
+				} else {
 					fprintf (stderr,
 							"Unknown option character `\\x%x'.\n",
 							optopt);
+				}
 				return 1;
 			default:
 				abort();
@@ -507,10 +498,10 @@ int main(int argc, char** argv)
 	//printf ("aflag = %d, bflag = %d, cvalue = %s\n",
 	//	aflag, bflag, cvalue);
 
-	for (index = optind; index < argc; index++)
+	for (index = optind; index < argc; index++) {
 		printf ("Non-option argument %s\n", argv[index]);
-	switch (mode)
-	{
+	}
+	switch (mode) {
 		case CLIENT:
 			printf("Client searching for server at %s on %i...\n", server_ip, port);
 			start_client(server_ip, port);
